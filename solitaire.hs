@@ -1,3 +1,6 @@
+{- Author: Jedrzej Golebiewski
+COM2108 Functional Programming Grading Assignment -}
+
 import System.Random
 import Data.List
 
