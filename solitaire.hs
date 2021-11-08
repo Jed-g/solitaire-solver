@@ -34,7 +34,7 @@ shuffle deck = [card | (card, _) <- sortBy cmp (zip deck (randoms (mkStdGen 1) :
 type Foundations = [Card]
 type Columns = [[Card]]
 type Reserve = [Card]
-data Board = EOBoard Foundations Columns Reserve
+data Board = EOBoard Foundations Columns Reserve | SBoard Foundations Columns Hidden Stock
 
 appendixABoard :: Board
 appendixABoard = EOBoard [] [[(Ace, Clubs), (Seven, Diamonds), (Ace, Hearts), (Queen, Hearts), (King, Clubs), (Four, Spades)],
@@ -48,7 +48,16 @@ appendixABoard = EOBoard [] [[(Ace, Clubs), (Seven, Diamonds), (Ace, Hearts), (Q
 
 instance Show Board where
     show (EOBoard foundations columns reserve) = "EOBoard\nFoundations " ++ show foundations ++ "\nColumns\n" ++
-        concat ["\t" ++ show column ++ "\n" | column <- columns] ++ "\nReserve " ++ show reserve
+        concat ["\t" ++ show column ++ "\n" | column <- columns] ++ "Reserve " ++ show reserve
+
+    show (SBoard foundations columns hidden stock) = "SBoard\nFoundations " ++ show foundations ++ "\nColumns\n" ++
+        concat ["\t[" ++ generateInnerString column outerIndex ++ "]\n" | (column, outerIndex) <- zip columns [1..]] ++
+        "Stock " ++ show (length stock `div` 10) ++ " Deals remaining"
+        where
+            generateInnerString col outIndex = 
+                concat [(if null indexOfHiddenDef then show card else if snd(hidden !! (indexOfHiddenDef !! 0)) > innerIndex then show card else "<unknown>") ++
+                (if innerIndex == length col then "" else ",") ++ (if innerIndex `mod` 6 == 0 && innerIndex < length col then "\n\t" else "") |
+                (card, innerIndex) <- zip col [1..], let indexOfHiddenDef = findIndices (\(columnIndex, _) -> columnIndex == outIndex) hidden]
 
 eODeal :: Board
 eODeal = EOBoard [] [[shuffledPack !! (outerIndex * 6 + innerIndex) | innerIndex <- [0..5]] | outerIndex <- [0..7]] [shuffledPack !! index | index <- [48..51]]
@@ -79,3 +88,26 @@ updateColumns (columns, cardsThatCanBeMoved) = [[card | card <- column, not (ele
 
 updateReserve :: (Reserve, Deck) -> Reserve
 updateReserve (reserve, cardsThatCanBeMoved) = [reserveCard | reserveCard <- reserve, not (elem reserveCard cardsThatCanBeMoved)]
+
+type Hidden = [(Int, Int)]
+type Stock = [Card]
+
+columnsInAppendixB :: Columns
+columnsInAppendixB = [[(Eight, Diamonds), (Nine, Hearts)], [(Two, Diamonds)],
+    [(Ace, Spades), (Two, Spades), (Three, Spades), (Four, Spades), (Five, Spades), (Six, Clubs), (Seven, Clubs), (Eight, Clubs), (Nine, Clubs), (Ten, Diamonds),
+    (Jack, Diamonds), (Queen, Diamonds), (King, Diamonds), (Ace, Spades), (Eight, Spades)],
+    [(Seven, Clubs), (Eight, Diamonds), (Nine, Diamonds), (Ten, Diamonds), (Jack, Diamonds), (Queen, Diamonds), (King, Diamonds), (Nine, Clubs), (Ten, Hearts), (Jack, Clubs)],
+    [(Ace, Hearts), (Two, Hearts), (Three, Hearts), (Four, Hearts), (Five, Hearts), (Six, Diamonds), (Seven, Diamonds), (Queen, Clubs), (King, Hearts)],
+    [(Two, Diamonds), (Three, Diamonds), (Four, Diamonds)],
+    [(Jack, Clubs), (Queen, Clubs), (King, Clubs), (Two, Spades), (Three, Spades), (Four, Diamonds), (Five, Diamonds), (Six, Diamonds), (Seven, Hearts), (Eight, Clubs), (Nine, Spades),
+    (Ten, Clubs), (Ace, Clubs), (Two, Clubs), (Three, Clubs), (Four, Clubs), (Five, Spades)],
+    [(Seven, Spades), (Eight, Spades), (Nine, Spades), (Ten, Spades), (Jack, Spades), (Queen, Spades), (King, Spades), (Four, Hearts), (Seven, Hearts), (Jack, Hearts)],
+    [(Jack, Hearts), (Queen, Hearts)], [(Ace, Clubs), (Two, Clubs)]]
+
+calculateStockForAppendixB :: Stock
+calculateStockForAppendixB = take 20 [card | card <- shuffle pack, iteration <- [0..1], iteration >= countInstances card columnsInAppendixB]
+    where
+        countInstances card columns = foldr (\column outerCount -> foldr (\item innerCount -> if item == card then innerCount+1 else innerCount) outerCount column) 0 columns
+
+appendixBBoard :: Board
+appendixBBoard = SBoard [(King, Hearts)] columnsInAppendixB [(3, 14), (8, 8)] calculateStockForAppendixB
