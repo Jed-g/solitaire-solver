@@ -101,13 +101,18 @@ columnsInAppendixB = [[(Eight, Diamonds), (Nine, Hearts)], [(Two, Diamonds)],
     [(Two, Diamonds), (Three, Diamonds), (Four, Diamonds)],
     [(Jack, Clubs), (Queen, Clubs), (King, Clubs), (Two, Spades), (Three, Spades), (Four, Diamonds), (Five, Diamonds), (Six, Diamonds), (Seven, Hearts), (Eight, Clubs), (Nine, Spades),
     (Ten, Clubs), (Ace, Clubs), (Two, Clubs), (Three, Clubs), (Four, Clubs), (Five, Spades)],
-    [(Seven, Spades), (Eight, Spades), (Nine, Spades), (Ten, Spades), (Jack, Spades), (Queen, Spades), (King, Spades), (Four, Hearts), (Seven, Hearts), (Jack, Hearts)],
+    [(Seven, Spades), (Eight, Spades), (Nine, Spades), (Ten, Spades), (Jack, Spades), (Queen, Spades), (King, Spades), (Four, Clubs), (Ten, Clubs), (Ten, Spades)],
     [(Jack, Hearts), (Queen, Hearts)], [(Ace, Clubs), (Two, Clubs)]]
 
+generateSequenceFromTopCard :: Deck -> Card -> Deck
+generateSequenceFromTopCard currentSequence card@(Ace, _) = currentSequence ++ [card]
+generateSequenceFromTopCard currentSequence card = generateSequenceFromTopCard (currentSequence ++ [card]) (pCard card)
+
 calculateStockForAppendixB :: Stock
-calculateStockForAppendixB = take 20 [card | card <- shuffle pack, iteration <- [0..1], iteration >= countInstances card columnsInAppendixB]
+calculateStockForAppendixB = [card | card <- shuffle pack, iteration <- [0..1], iteration >= countInstances card (columnsInAppendixB ++ foundationsCardsInAppendixB)]
     where
         countInstances card columns = foldr (\column outerCount -> foldr (\item innerCount -> if item == card then innerCount+1 else innerCount) outerCount column) 0 columns
+        foundationsCardsInAppendixB = [generateSequenceFromTopCard [] (King, Hearts)]
 
 appendixBBoard :: Board
 appendixBBoard = SBoard [(King, Hearts)] columnsInAppendixB [(3, 14), (8, 8)] calculateStockForAppendixB
