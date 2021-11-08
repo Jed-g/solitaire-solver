@@ -111,3 +111,8 @@ calculateStockForAppendixB = take 20 [card | card <- shuffle pack, iteration <- 
 
 appendixBBoard :: Board
 appendixBBoard = SBoard [(King, Hearts)] columnsInAppendixB [(3, 14), (8, 8)] calculateStockForAppendixB
+
+sDeal :: Board
+sDeal = SBoard [] (concat [[[deck !! (50 + i*6 + j) | j <- [0..5]] | i <- [0..3]], [[deck !! (74 + i*5 + j) | j <- [0..4]] | i <- [0..5]]]) [(i, 2) | i <- [1..10]] (take 50 deck)
+    where
+        deck = [card | card <- shuffle pack, iteration <- [1..2]]
