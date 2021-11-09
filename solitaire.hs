@@ -135,7 +135,4 @@ appendixBBoard = SBoard [(King, Hearts)] columnsInAppendixB [(3, 14), (8, 8)] ca
 sDeal :: Int -> Board
 sDeal seed = SBoard [] (concat [[[deck !! (50 + i*6 + j) | j <- [0..5]] | i <- [0..3]], [[deck !! (74 + i*5 + j) | j <- [0..4]] | i <- [0..5]]]) [(i, 2) | i <- [1..10]] (take 50 deck)
     where
-        {- New seed is generated for the second shuffle by using the old seed as the generator seed.
-        Without this, the order of the cards in stock could be deduced from the initial position of the cards in the columns.-}
-        (modifiedSeedForSecondShuffle, _) = random (mkStdGen seed)
-        deck = [card | card <- shuffle seed pack] ++ [card | card <- shuffle modifiedSeedForSecondShuffle pack]
+        deck = [shuffledCard | shuffledCard <- shuffle seed [card | iteration <- [1..2], card <- pack]]
