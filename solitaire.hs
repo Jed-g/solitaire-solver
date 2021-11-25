@@ -69,16 +69,10 @@ eODeal seed = EOBoard [] [[shuffledPack !! (outerIndex * 6 + innerIndex) | inner
     where
         shuffledPack = shuffle seed pack
 
+{- The 'toFoundations' function recursively calls itself until no cards can be moved. During each call, it creates a list with the cards that can be moved,
+updates 'foundations' with these cards, updates 'columns' and 'reserve' by removing the cards that can be moved. If no cards can be moved, the function terminates.-}
 toFoundations :: Board -> Board
-toFoundations (EOBoard foundations columns reserve) = EOBoard updatedFoundations updatedColumns updatedReserve
-    where
-        (updatedFoundations, updatedColumns, updatedReserve) = doAllPossibleMoves (foundations, columns, reserve)
-
-{- Helper function for 'toFoundations'. It recursively calls itself until no cards can be moved. During each call, it creates a list with the cards that can be moved,
-updates 'foundations' with these cards, updates 'columns' and 'reserve' by removing the cards that can be moved. If no cards can be moved, the function terminates.-} 
-doAllPossibleMoves :: (Foundations, Columns, Reserve) -> (Foundations, Columns, Reserve)
-doAllPossibleMoves (foundations, columns, reserve) = if null cardsThatCanBeMoved then (foundations, columns, reserve) else
-    doAllPossibleMoves (updatedFoundations, updatedColumns, updatedReserve)
+toFoundations board@(EOBoard foundations columns reserve) = boardToReturn
     where
         cardsThatCanBeMoved = [head column | column <- removeEmptyColumns columns, isAce (head column) || elem (pCard (head column)) foundations] ++
             [reserveCard | reserveCard <- reserve, isAce reserveCard || elem (pCard reserveCard) foundations]
@@ -87,7 +81,9 @@ doAllPossibleMoves (foundations, columns, reserve) = if null cardsThatCanBeMoved
         updatedColumns = updateColumns (columns, cardsThatCanBeMoved)
         updatedReserve = updateReserve (reserve, cardsThatCanBeMoved)
 
--- Helper functions for 'doAllPossibleMoves'. Functionality explained above.
+        boardToReturn = if null cardsThatCanBeMoved then board else toFoundations (EOBoard updatedFoundations updatedColumns updatedReserve)
+
+-- Helper functions for 'toFoundations'. Functionality explained above.
 updateFoundations :: (Foundations, Deck) -> Foundations
 updateFoundations (foundations, cardsThatCanBeMoved) = cardsThatCanBeMoved ++ [card | card <- foundations, not (elem (sCard card) cardsThatCanBeMoved)]
 
@@ -97,7 +93,7 @@ updateColumns (columns, cardsThatCanBeMoved) = [[card | card <- column, not (ele
 updateReserve :: (Reserve, Deck) -> Reserve
 updateReserve (reserve, cardsThatCanBeMoved) = [reserveCard | reserveCard <- reserve, not (elem reserveCard cardsThatCanBeMoved)]
 
--- Prevent exception when calling 'head' on an empty column (list) e.g. in doAllPossibleMoves.
+-- Prevent exception when calling 'head' on an empty column (list) e.g. in toFoundations.
 removeEmptyColumns :: Columns -> Columns
 removeEmptyColumns columns = [column | column <- columns, length column > 0]
 
@@ -142,16 +138,26 @@ sDeal seed = SBoard [] ([[deck !! (50 + i*6 + j) | j <- [0..5]] | i <- [0..3]] +
         deck = [shuffledCard | shuffledCard <- shuffle seed [card | iteration <- [1..2], card <- pack]]
 
 findMoves :: Board -> [Board]
-findMoves board@(EOBoard foundations columns reserve) = nub (map toFoundations ([board] ++ moveColumnCardsToReserve board ++ moveReserveCardsToColumns board
+findMoves board = nub (map toFoundations ([board] ++ moveColumnCardsToReserve board ++ moveReserveCardsToColumns board
     ++ moveColumnCardsToDifferentColumns board))
 
 -- Return list of board states after moving all the column heads to reserve, one by one.
 moveColumnCardsToReserve :: Board -> [Board]
-moveColumnCardsToReserve (EOBoard foundations columns reserve) = if length reserve < 8 then [EOBoard foundations [if i==j then drop 1 column else
-    column | (column, j) <- zip columns [0..]] ((head (columns !! i)) : reserve) | i <- [0..(length columns - 1)], length (columns !! i) > 0] else []
+moveColumnCardsToReserve (EOBoard foundations columns reserve)
+    | length reserve >= 8 = []
+    | otherwise = [EOBoard foundations [if innerColumn == outerColumn then drop 1 innerColumn else innerColumn | innerColumn <- columns] ((head outerColumn) : reserve) |
+    outerColumn <- columns, length outerColumn > 0]
 
 moveReserveCardsToColumns :: Board -> [Board]
-moveReserveCardsToColumns = undefined
+moveReserveCardsToColumns (EOBoard foundations columns reserve) = [EOBoard foundations (map (\innerColumn -> if innerColumn == outerColumn then (reserveCard : innerColumn)
+    else innerColumn) columns) (filter (/= reserveCard) reserve) | reserveCard <- reserveWithoutKings, outerColumn <- columns, length outerColumn > 0 &&
+    pCard (head outerColumn) == reserveCard] ++ [EOBoard foundations (map (\innerColumn -> if innerColumn == outerColumn then [reserveCard] else
+    innerColumn) columns) (filter (/= reserveCard) reserve) | reserveCard <- reserveOnlyKings, outerColumn <- columns, length outerColumn == 0]
+        where
+            reserveWithoutKings = filter (not.isKing) reserve
+            reserveOnlyKings = filter isKing reserve
 
 moveColumnCardsToDifferentColumns :: Board -> [Board]
-moveColumnCardsToDifferentColumns = undefined
+moveColumnCardsToDifferentColumns (EOBoard foundations columns reserve) = concat [[EOBoard foundations (map (\col -> if col == outerColumn then drop 1 outerColumn else if
+    col == innerColumn then (head outerColumn : innerColumn) else col) columns) reserve | innerColumn <- columns, innerColumn /= outerColumn, length innerColumn == 0 &&
+    isKing (head outerColumn) || length innerColumn > 0 && sCard (head outerColumn) == head innerColumn] | outerColumn <- columns, length outerColumn > 0]
