@@ -32,7 +32,7 @@ shuffle seed deck = [card | (card, _) <- sortBy cmp (zip deck (randoms (mkStdGen
 type Foundations = [Card]
 type Columns = [[Card]]
 type Reserve = [Card]
-data Board = EOBoard Foundations Columns Reserve | SBoard Foundations Columns Hidden Stock
+data Board = EOBoard Foundations Columns Reserve | SBoard Foundations Columns Hidden Stock deriving (Eq)
 
 appendixABoard :: Board
 appendixABoard = EOBoard [] [[(Ace, Clubs), (Seven, Diamonds), (Ace, Hearts), (Queen, Hearts), (King, Clubs), (Four, Spades)],
@@ -80,7 +80,7 @@ doAllPossibleMoves :: (Foundations, Columns, Reserve) -> (Foundations, Columns, 
 doAllPossibleMoves (foundations, columns, reserve) = if null cardsThatCanBeMoved then (foundations, columns, reserve) else
     doAllPossibleMoves (updatedFoundations, updatedColumns, updatedReserve)
     where
-        cardsThatCanBeMoved = [head column | column <- columns, isAce (head column) || elem (pCard (head column)) foundations] ++
+        cardsThatCanBeMoved = [head column | column <- removeEmptyColumns columns, isAce (head column) || elem (pCard (head column)) foundations] ++
             [reserveCard | reserveCard <- reserve, isAce reserveCard || elem (pCard reserveCard) foundations]
 
         updatedFoundations = updateFoundations (foundations, cardsThatCanBeMoved)
@@ -96,6 +96,10 @@ updateColumns (columns, cardsThatCanBeMoved) = [[card | card <- column, not (ele
 
 updateReserve :: (Reserve, Deck) -> Reserve
 updateReserve (reserve, cardsThatCanBeMoved) = [reserveCard | reserveCard <- reserve, not (elem reserveCard cardsThatCanBeMoved)]
+
+-- Prevent exception when calling 'head' on an empty column (list) e.g. in doAllPossibleMoves.
+removeEmptyColumns :: Columns -> Columns
+removeEmptyColumns columns = [column | column <- columns, length column > 0]
 
 -- The purpose of this type is explained in the SBoard Show definition above.
 type Hidden = [(Int, Int)]
@@ -133,6 +137,21 @@ appendixBBoard :: Board
 appendixBBoard = SBoard [(King, Hearts)] columnsInAppendixB [(3, 14), (8, 8)] calculateStockForAppendixB
 
 sDeal :: Int -> Board
-sDeal seed = SBoard [] (concat [[[deck !! (50 + i*6 + j) | j <- [0..5]] | i <- [0..3]], [[deck !! (74 + i*5 + j) | j <- [0..4]] | i <- [0..5]]]) [(i, 2) | i <- [1..10]] (take 50 deck)
+sDeal seed = SBoard [] ([[deck !! (50 + i*6 + j) | j <- [0..5]] | i <- [0..3]] ++ [[deck !! (74 + i*5 + j) | j <- [0..4]] | i <- [0..5]]) [(i, 2) | i <- [1..10]] (take 50 deck)
     where
         deck = [shuffledCard | shuffledCard <- shuffle seed [card | iteration <- [1..2], card <- pack]]
+
+findMoves :: Board -> [Board]
+findMoves board@(EOBoard foundations columns reserve) = nub (map toFoundations ([board] ++ moveColumnCardsToReserve board ++ moveReserveCardsToColumns board
+    ++ moveColumnCardsToDifferentColumns board))
+
+-- Return list of board states after moving all the column heads to reserve, one by one.
+moveColumnCardsToReserve :: Board -> [Board]
+moveColumnCardsToReserve (EOBoard foundations columns reserve) = if length reserve < 8 then [EOBoard foundations [if i==j then drop 1 column else
+    column | (column, j) <- zip columns [0..]] ((head (columns !! i)) : reserve) | i <- [0..(length columns - 1)], length (columns !! i) > 0] else []
+
+moveReserveCardsToColumns :: Board -> [Board]
+moveReserveCardsToColumns = undefined
+
+moveColumnCardsToDifferentColumns :: Board -> [Board]
+moveColumnCardsToDifferentColumns = undefined
