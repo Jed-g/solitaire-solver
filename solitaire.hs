@@ -3,6 +3,8 @@ COM2108 Functional Programming Grading Assignment -}
 
 import System.Random
 import Data.List
+import Data.Maybe
+import Debug.Trace
 
 data Suit = Hearts | Clubs | Spades | Diamonds deriving (Show, Enum, Eq)
 data Pip = Ace | Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Jack | Queen | King deriving (Show, Enum, Eq)
@@ -137,9 +139,12 @@ sDeal seed = SBoard [] ([[deck !! (50 + i*6 + j) | j <- [0..5]] | i <- [0..3]] +
     where
         deck = [shuffledCard | shuffledCard <- shuffle seed [card | iteration <- [1..2], card <- pack]]
 
+-- Finds all possible moves from a board state, removes duplicates and potentially removes original state from return list
 findMoves :: Board -> [Board]
-findMoves board = nub (map toFoundations ([board] ++ moveColumnCardsToReserve board ++ moveReserveCardsToColumns board
-    ++ moveColumnCardsToDifferentColumns board))
+findMoves board = [newBoard | newBoard <- allPossibleMoves, newBoard /= board]
+    where
+        allPossibleMoves = nub (map toFoundations ([board] ++ moveColumnCardsToReserve board ++ moveReserveCardsToColumns board
+            ++ moveColumnCardsToDifferentColumns board))
 
 -- Return list of board states after moving all the column heads to reserve, one by one.
 moveColumnCardsToReserve :: Board -> [Board]
@@ -161,3 +166,40 @@ moveColumnCardsToDifferentColumns :: Board -> [Board]
 moveColumnCardsToDifferentColumns (EOBoard foundations columns reserve) = concat [[EOBoard foundations (map (\col -> if col == outerColumn then drop 1 outerColumn else if
     col == innerColumn then (head outerColumn : innerColumn) else col) columns) reserve | innerColumn <- columns, innerColumn /= outerColumn, length innerColumn == 0 &&
     isKing (head outerColumn) || length innerColumn > 0 && sCard (head outerColumn) == head innerColumn] | outerColumn <- columns, length outerColumn > 0]
+
+{- It would be best to change the definition of this function to allow the input of a list of boards i.e. the history of past board states,
+so that these can be checked against to avoid infinite loops, but as per the assignment instructions, I kept the definition as it is right now
+and created helper functions to overcome the issue. -}
+chooseMove :: Board -> Maybe Board
+chooseMove board
+    | bestMovesFromBoardInOrder board == [] = Nothing
+    | otherwise = Just (head (bestMovesFromBoardInOrder board))
+
+bestMovesFromBoardInOrder :: Board -> [Board]
+bestMovesFromBoardInOrder board = reverse $ findMoves board
+
+haveWon :: Board -> Bool
+haveWon (EOBoard foundations columns reserve) = length reserve == 0 && 
+    foldr (\col totalCardsAmount -> length col + totalCardsAmount) 0 columns == 0
+
+playSolitaire :: Board -> Int
+playSolitaire board = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
+    where
+        (EOBoard foundations columns reserve) = playSolitaireHelper board []
+
+playSolitaireHelper :: Board -> [Board] -> Board
+playSolitaireHelper board boardHistory
+    | isNothing (chooseMove board) = board
+    | not (elem (fromJust (chooseMove board)) boardHistory) = playSolitaireHelper (traceShow (fromJust (chooseMove board)) (fromJust (chooseMove board))) (fromJust (chooseMove board):boardHistory)
+    | otherwise = if length listOfBestMovesNotInHistory >= 2 then playSolitaireHelper (traceShow nextMoveToPlay nextMoveToPlay) (nextMoveToPlay:boardHistory) else board
+        where
+            listOfBestMovesNotInHistory = [move | move <- bestMovesFromBoardInOrder board, not (elem move boardHistory)]
+            nextMoveToPlay = listOfBestMovesNotInHistory !! 1
+
+
+
+{-TODO
+findMoves modify moveColumnCardsToDifferentColumns for many cards in columns to be moved at once to another columns if rules allow it
+do analyseEO
+pick good search strategy in chooseMove
+-}
