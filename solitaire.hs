@@ -34,7 +34,7 @@ shuffle seed deck = [card | (card, _) <- sortBy cmp (zip deck (randoms (mkStdGen
 type Foundations = [Card]
 type Columns = [[Card]]
 type Reserve = [Card]
-data Board = EOBoard Foundations Columns Reserve | SBoard Foundations Columns Hidden Stock deriving (Eq)
+data Board = EOBoard Foundations Columns Reserve | SBoard Foundations Columns Hidden Stock
 
 appendixABoard :: Board
 appendixABoard = EOBoard [] [[(Ace, Clubs), (Seven, Diamonds), (Ace, Hearts), (Queen, Hearts), (King, Clubs), (Four, Spades)],
@@ -46,6 +46,12 @@ appendixABoard = EOBoard [] [[(Ace, Clubs), (Seven, Diamonds), (Ace, Hearts), (Q
         [(Nine, Spades), (Four, Diamonds), (Nine, Clubs), (Nine, Hearts), (Three, Spades), (Ten, Spades)],
         [(Two, Clubs), (Two, Spades), (Four, Hearts), (Nine, Diamonds), (King, Spades), (Eight, Hearts)]] [(Two, Hearts),
         (Six, Clubs), (Five, Clubs), (Jack, Diamonds)]
+
+instance Eq Board where
+    EOBoard foundations1 columns1 reserve1 == EOBoard foundations2 columns2 reserve2 =
+        null (foundations1 \\ foundations2) && null (foundations2 \\ foundations1) &&
+        null (columns1 \\ columns2) && null (columns2 \\ columns1) &&
+        null (reserve1 \\ reserve2) && null (reserve2 \\ reserve1)
 
 instance Show Board where
     show (EOBoard foundations columns reserve) = "EOBoard\nFoundations " ++ show foundations ++ "\nColumns\n" ++
@@ -150,22 +156,25 @@ findMoves board = [newBoard | newBoard <- allPossibleMoves, newBoard /= board]
 moveColumnCardsToReserve :: Board -> [Board]
 moveColumnCardsToReserve (EOBoard foundations columns reserve)
     | length reserve >= 8 = []
-    | otherwise = [EOBoard foundations [if innerColumn == outerColumn then drop 1 innerColumn else innerColumn | innerColumn <- columns] ((head outerColumn) : reserve) |
-    outerColumn <- columns, length outerColumn > 0]
+    | otherwise = [EOBoard foundations [if innerColumn == outerColumn then drop 1 (columns !! innerColumn) else (columns !! innerColumn) | innerColumn <-
+    [0..(length columns - 1)]] ((head (columns !! outerColumn)) : reserve) | outerColumn <- [0..(length columns - 1)], length (columns !! outerColumn) > 0]
 
 moveReserveCardsToColumns :: Board -> [Board]
-moveReserveCardsToColumns (EOBoard foundations columns reserve) = [EOBoard foundations (map (\innerColumn -> if innerColumn == outerColumn then (reserveCard : innerColumn)
-    else innerColumn) columns) (filter (/= reserveCard) reserve) | reserveCard <- reserveWithoutKings, outerColumn <- columns, length outerColumn > 0 &&
-    pCard (head outerColumn) == reserveCard] ++ [EOBoard foundations (map (\innerColumn -> if innerColumn == outerColumn then [reserveCard] else
-    innerColumn) columns) (filter (/= reserveCard) reserve) | reserveCard <- reserveOnlyKings, outerColumn <- columns, length outerColumn == 0]
+moveReserveCardsToColumns (EOBoard foundations columns reserve) = [EOBoard foundations [if innerColumn == outerColumn then (reserveCard:columns !! innerColumn)
+    else columns !! innerColumn | innerColumn <- [0..(length columns - 1)]] (filter (/= reserveCard) reserve) | reserveCard <- reserveWithoutKings,
+    outerColumn <- [0..(length columns - 1)], length (columns !! outerColumn) > 0 && pCard (head (columns !! outerColumn)) == reserveCard] ++
+    [EOBoard foundations [if innerColumn == outerColumn then [reserveCard] else columns !! innerColumn | innerColumn <- [0..(length columns - 1)]]
+    (filter (/= reserveCard) reserve) | reserveCard <- reserveOnlyKings, outerColumn <- [0..(length columns - 1)], length (columns !! outerColumn) == 0]
         where
             reserveWithoutKings = filter (not.isKing) reserve
             reserveOnlyKings = filter isKing reserve
 
 moveColumnCardsToDifferentColumns :: Board -> [Board]
-moveColumnCardsToDifferentColumns (EOBoard foundations columns reserve) = concat [[EOBoard foundations (map (\col -> if col == outerColumn then drop 1 outerColumn else if
-    col == innerColumn then (head outerColumn : innerColumn) else col) columns) reserve | innerColumn <- columns, innerColumn /= outerColumn, length innerColumn == 0 &&
-    isKing (head outerColumn) || length innerColumn > 0 && sCard (head outerColumn) == head innerColumn] | outerColumn <- columns, length outerColumn > 0]
+moveColumnCardsToDifferentColumns (EOBoard foundations columns reserve) = concat [concat [[EOBoard foundations (map (\col -> if col == outerColumn then
+    drop subsetIndexOfCol outerColumn else if col == innerColumn then take subsetIndexOfCol outerColumn ++ innerColumn else col) columns) reserve |
+    innerColumn <- columns, innerColumn /= outerColumn, length innerColumn == 0 && isKing (outerColumn !! (subsetIndexOfCol - 1)) || length innerColumn > 0
+    && sCard (outerColumn !! (subsetIndexOfCol - 1)) == head innerColumn] | subsetIndexOfCol <- [1..(length outerColumn)],
+    isInfixOf (take subsetIndexOfCol outerColumn) (reverse (generateSequenceFromTopCard [] (outerColumn !! (subsetIndexOfCol - 1))))] | outerColumn <- columns]
 
 {- It would be best to change the definition of this function to allow the input of a list of boards i.e. the history of past board states,
 so that these can be checked against to avoid infinite loops, but as per the assignment instructions, I kept the definition as it is right now
@@ -173,7 +182,21 @@ and created helper functions to overcome the issue. -}
 chooseMove :: Board -> Maybe Board
 chooseMove board
     | bestMovesFromBoardInOrder board == [] = Nothing
-    | otherwise = Just (head (bestMovesFromBoardInOrder board))
+    | length nextMove == 0 = Nothing
+    | otherwise = Just (head nextMove)
+        where
+            -- Use lazy evaluation to avoid combinatorial explosion
+            nextMove = take 1 [move | move <- bestMovesFromBoardInOrder board, moveWillNotCauseInfiniteLoop move [board]]
+
+moveWillNotCauseInfiniteLoop :: Board -> [Board] -> Bool
+moveWillNotCauseInfiniteLoop board boardHistory
+    | elem board boardHistory = False
+    | bestMovesFromBoardInOrder board == [] = True
+    | length nextMove == 0 = False
+    | otherwise = True
+        where
+            -- Use lazy evaluation to avoid combinatorial explosion
+            nextMove = take 1 [move | move <- bestMovesFromBoardInOrder board, moveWillNotCauseInfiniteLoop move (board:boardHistory)]
 
 bestMovesFromBoardInOrder :: Board -> [Board]
 bestMovesFromBoardInOrder board = reverse $ findMoves board
@@ -182,24 +205,19 @@ haveWon :: Board -> Bool
 haveWon (EOBoard foundations columns reserve) = length reserve == 0 && 
     foldr (\col totalCardsAmount -> length col + totalCardsAmount) 0 columns == 0
 
-playSolitaire :: Board -> Int
-playSolitaire board = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
-    where
-        (EOBoard foundations columns reserve) = playSolitaireHelper board []
-
-playSolitaireHelper :: Board -> [Board] -> Board
-playSolitaireHelper board boardHistory
-    | isNothing (chooseMove board) = board
-    | not (elem (fromJust (chooseMove board)) boardHistory) = playSolitaireHelper (traceShow (fromJust (chooseMove board)) (fromJust (chooseMove board))) (fromJust (chooseMove board):boardHistory)
-    | otherwise = if length listOfBestMovesNotInHistory >= 2 then playSolitaireHelper (traceShow nextMoveToPlay nextMoveToPlay) (nextMoveToPlay:boardHistory) else board
+playSolitaire :: Board -> Int -> Int
+playSolitaire board@(EOBoard foundations columns reserve) n
+    | isNothing nextBoard = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
+    | otherwise = if n `mod` 35 == 0 then traceShow board (playSolitaire (fromJust nextBoard) (n+1)) else playSolitaire (fromJust nextBoard) (n+1)
         where
-            listOfBestMovesNotInHistory = [move | move <- bestMovesFromBoardInOrder board, not (elem move boardHistory)]
-            nextMoveToPlay = listOfBestMovesNotInHistory !! 1
+            nextBoard = chooseMove board
 
-
+-- Float precision will suffice
+{-analyseEO :: Int -> Int -> (Int, Float)
+analyseEO seed noOfGames = (length (filter (==52) results), (fromIntegral (sum results)) / (fromIntegral (length results)))
+    where
+        results = [playSolitaire (eODeal shuffleSeed) | (shuffleSeed, _) <- zip (randoms (mkStdGen seed) :: [Int]) [1..noOfGames]]-}
 
 {-TODO
-findMoves modify moveColumnCardsToDifferentColumns for many cards in columns to be moved at once to another columns if rules allow it
-do analyseEO
 pick good search strategy in chooseMove
 -}
