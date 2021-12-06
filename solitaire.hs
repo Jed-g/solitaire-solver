@@ -170,33 +170,45 @@ moveReserveCardsToColumns (EOBoard foundations columns reserve) = [EOBoard found
             reserveOnlyKings = filter isKing reserve
 
 moveColumnCardsToDifferentColumns :: Board -> [Board]
-moveColumnCardsToDifferentColumns (EOBoard foundations columns reserve) = concat [concat [[EOBoard foundations (map (\col -> if col == outerColumn then
-    drop subsetIndexOfCol outerColumn else if col == innerColumn then take subsetIndexOfCol outerColumn ++ innerColumn else col) columns) reserve |
-    innerColumn <- columns, innerColumn /= outerColumn, length innerColumn == 0 && isKing (outerColumn !! (subsetIndexOfCol - 1)) || length innerColumn > 0
-    && sCard (outerColumn !! (subsetIndexOfCol - 1)) == head innerColumn] | subsetIndexOfCol <- [1..(length outerColumn)],
-    isInfixOf (take subsetIndexOfCol outerColumn) (reverse (generateSequenceFromTopCard [] (outerColumn !! (subsetIndexOfCol - 1))))] | outerColumn <- columns]
+moveColumnCardsToDifferentColumns (EOBoard foundations columns reserve) = concat [concat [[EOBoard foundations [if col == outerColumn then drop subsetIndexOfCol (columns !! outerColumn)
+    else if col == innerColumn then take subsetIndexOfCol (columns !! outerColumn) ++ (columns !! innerColumn) else (columns !! col)| col <- [0..(length columns - 1)]] reserve |
+    innerColumn <- [0..(length columns - 1)], innerColumn /= outerColumn, length (columns !! innerColumn) == 0 && isKing (columns !! outerColumn !! (subsetIndexOfCol - 1)) ||
+    length (columns !! innerColumn) > 0 && sCard (columns !! outerColumn !! (subsetIndexOfCol - 1)) == head (columns !! innerColumn)] | subsetIndexOfCol <-
+    [1..(length (columns !! outerColumn))], isInfixOf (take subsetIndexOfCol (columns !! outerColumn)) (reverse (generateSequenceFromTopCard [] (columns !! outerColumn !!
+    (subsetIndexOfCol - 1))))] | outerColumn <- [0..(length columns - 1)]]
 
 {- It would be best to change the definition of this function to allow the input of a list of boards i.e. the history of past board states,
 so that these can be checked against to avoid infinite loops, but as per the assignment instructions, I kept the definition as it is right now
 and created helper functions to overcome the issue. -}
 chooseMove :: Board -> Maybe Board
 chooseMove board
-    | bestMovesFromBoardInOrder board == [] = Nothing
-    | length nextMove == 0 = Nothing
-    | otherwise = Just (head nextMove)
+    | findMoves board == [] = Nothing
+    | nextMoveTemp == ((1000000, -1), EOBoard [] [[]] []) = Nothing
+    | otherwise = Just nextMove
         where
             -- Use lazy evaluation to avoid combinatorial explosion
-            nextMove = take 1 [move | move <- bestMovesFromBoardInOrder board, moveWillNotCauseInfiniteLoop move [board]]
+            nextMoveTemp = foldr (\((prevElemDepth, prevBestSolution), prevBoard) ((depth, bestSolution), currentBoard) -> if prevBestSolution == bestSolution then
+                (if prevElemDepth < depth then ((prevElemDepth, prevBestSolution), prevBoard) else ((depth, bestSolution), currentBoard)) else (if prevBestSolution > bestSolution then ((prevElemDepth, prevBestSolution), prevBoard) else ((depth, bestSolution), currentBoard))) ((1000000, -1), EOBoard [] [[]] [])
+                [(fromJust (calculateDepthOfOptimalSolution move [board] 1), move) | move <- findMoves board, (not.isNothing) (calculateDepthOfOptimalSolution move [board] 1)]
+            
+            ((_, foundations), nextMove) = nextMoveTemp
 
-moveWillNotCauseInfiniteLoop :: Board -> [Board] -> Bool
-moveWillNotCauseInfiniteLoop board boardHistory
-    | elem board boardHistory = False
-    | bestMovesFromBoardInOrder board == [] = True
-    | length nextMove == 0 = False
-    | otherwise = True
+calculateDepthOfOptimalSolution :: Board -> [Board] -> Int -> Maybe (Int, Int)
+calculateDepthOfOptimalSolution board boardHistory depth
+    | findMoves board == [] = Just (depth, cardsInFoundations board)
+    | elem board boardHistory = Nothing
+    | depth >= 3 = Just (depth, cardsInFoundations board)
+    | bestSolutionIncurrentBranch == (1000000, -1) = Nothing
+    | otherwise = Just bestSolutionIncurrentBranch
         where
             -- Use lazy evaluation to avoid combinatorial explosion
-            nextMove = take 1 [move | move <- bestMovesFromBoardInOrder board, moveWillNotCauseInfiniteLoop move (board:boardHistory)]
+            bestSolutionIncurrentBranch = foldr (\(prevElemDepth, prevBestSolution) (depth, bestSolution) -> if prevBestSolution == bestSolution then
+                ((min prevElemDepth depth), bestSolution) else (if prevBestSolution > bestSolution then (prevElemDepth, prevBestSolution) else (depth, bestSolution))) (1000000, -1)
+                (map (fromJust) (filter (not.isNothing)
+                [calculateDepthOfOptimalSolution move (board:boardHistory) (depth+1) | move <- findMoves board]))
+
+cardsInFoundations :: Board -> Int
+cardsInFoundations (EOBoard foundations columns reserve) = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
 
 bestMovesFromBoardInOrder :: Board -> [Board]
 bestMovesFromBoardInOrder board = reverse $ findMoves board
@@ -206,8 +218,8 @@ haveWon (EOBoard foundations columns reserve) = length reserve == 0 &&
     foldr (\col totalCardsAmount -> length col + totalCardsAmount) 0 columns == 0
 
 playSolitaire :: Board -> Int -> Int
-playSolitaire board@(EOBoard foundations columns reserve) n
-    | isNothing nextBoard = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
+playSolitaire board n
+    | isNothing nextBoard = cardsInFoundations board
     | otherwise = if n `mod` 35 == 0 then traceShow board (playSolitaire (fromJust nextBoard) (n+1)) else playSolitaire (fromJust nextBoard) (n+1)
         where
             nextBoard = chooseMove board
