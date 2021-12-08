@@ -183,53 +183,48 @@ and created helper functions to overcome the issue. -}
 chooseMove :: Board -> Maybe Board
 chooseMove board
     | findMoves board == [] = Nothing
-    | nextMoveTemp == ((1000000, -1), EOBoard [] [[]] []) = Nothing
+    | nextMoveFiltered == [] = Nothing
     | otherwise = Just nextMove
         where
             -- Use lazy evaluation to avoid combinatorial explosion
-            nextMoveTemp = foldr (\((prevElemDepth, prevBestSolution), prevBoard) ((depth, bestSolution), currentBoard) -> if prevBestSolution == bestSolution then
+            nextMoveTemp = [foldr (\((depth, bestSolution), currentBoard) ((prevElemDepth, prevBestSolution), prevBoard) -> if prevBestSolution == bestSolution then
                 (if prevElemDepth < depth then ((prevElemDepth, prevBestSolution), prevBoard) else ((depth, bestSolution), currentBoard)) else (if prevBestSolution > bestSolution then ((prevElemDepth, prevBestSolution), prevBoard) else ((depth, bestSolution), currentBoard))) ((1000000, -1), EOBoard [] [[]] [])
-                [(fromJust (calculateDepthOfOptimalSolution move [board] 1), move) | move <- findMoves board, (not.isNothing) (calculateDepthOfOptimalSolution move [board] 1)]
+                [(fromJust (calculateDepthOfOptimalSolution move [board] 1 maxDepth), move) | move <- findMoves board, (not.isNothing) (calculateDepthOfOptimalSolution move [board] 1 maxDepth)] | maxDepth <- [1..5]]
             
-            ((_, foundations), nextMove) = nextMoveTemp
+            nextMoveFiltered = filter (\((_, cardsInBestFoundations), _) -> cardsInBestFoundations > countCardsInFoundations board) nextMoveTemp
 
-calculateDepthOfOptimalSolution :: Board -> [Board] -> Int -> Maybe (Int, Int)
-calculateDepthOfOptimalSolution board boardHistory depth
-    | findMoves board == [] = Just (depth, cardsInFoundations board)
+            ((_, _), nextMove) = head nextMoveFiltered
+
+calculateDepthOfOptimalSolution :: Board -> [Board] -> Int -> Int -> Maybe (Int, Int)
+calculateDepthOfOptimalSolution board boardHistory depth maxDepth
     | elem board boardHistory = Nothing
-    | depth >= 3 = Just (depth, cardsInFoundations board)
-    | bestSolutionIncurrentBranch == (1000000, -1) = Nothing
-    | otherwise = Just bestSolutionIncurrentBranch
+    | depth >= maxDepth || bestSolution == (-1) || bestSolution == countCardsInFoundations board = Just (depth, countCardsInFoundations board)
+    | otherwise = Just (bestDepth, bestSolution)
         where
             -- Use lazy evaluation to avoid combinatorial explosion
-            bestSolutionIncurrentBranch = foldr (\(prevElemDepth, prevBestSolution) (depth, bestSolution) -> if prevBestSolution == bestSolution then
+            (bestDepth, bestSolution) = foldr (\(depth, bestSolution) (prevElemDepth, prevBestSolution) -> if prevBestSolution == bestSolution then
                 ((min prevElemDepth depth), bestSolution) else (if prevBestSolution > bestSolution then (prevElemDepth, prevBestSolution) else (depth, bestSolution))) (1000000, -1)
                 (map (fromJust) (filter (not.isNothing)
-                [calculateDepthOfOptimalSolution move (board:boardHistory) (depth+1) | move <- findMoves board]))
+                [calculateDepthOfOptimalSolution move (board:boardHistory) (depth+1) maxDepth | move <- findMoves board]))
 
-cardsInFoundations :: Board -> Int
-cardsInFoundations (EOBoard foundations columns reserve) = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
+countCardsInFoundations :: Board -> Int
+countCardsInFoundations (EOBoard foundations columns reserve) = sum [length (generateSequenceFromTopCard [] topCard) | topCard <- foundations]
 
 bestMovesFromBoardInOrder :: Board -> [Board]
 bestMovesFromBoardInOrder board = reverse $ findMoves board
 
 haveWon :: Board -> Bool
-haveWon (EOBoard foundations columns reserve) = length reserve == 0 && 
-    foldr (\col totalCardsAmount -> length col + totalCardsAmount) 0 columns == 0
+haveWon board = countCardsInFoundations board == 52
 
-playSolitaire :: Board -> Int -> Int
-playSolitaire board n
-    | isNothing nextBoard = cardsInFoundations board
-    | otherwise = if n `mod` 35 == 0 then traceShow board (playSolitaire (fromJust nextBoard) (n+1)) else playSolitaire (fromJust nextBoard) (n+1)
+playSolitaire :: Board -> Int
+playSolitaire board
+    | isNothing nextBoard = countCardsInFoundations board
+    | otherwise = playSolitaire (fromJust nextBoard)
         where
             nextBoard = chooseMove board
 
 -- Float precision will suffice
-{-analyseEO :: Int -> Int -> (Int, Float)
+analyseEO :: Int -> Int -> (Int, Float)
 analyseEO seed noOfGames = (length (filter (==52) results), (fromIntegral (sum results)) / (fromIntegral (length results)))
     where
-        results = [playSolitaire (eODeal shuffleSeed) | (shuffleSeed, _) <- zip (randoms (mkStdGen seed) :: [Int]) [1..noOfGames]]-}
-
-{-TODO
-pick good search strategy in chooseMove
--}
+        results = [playSolitaire (eODeal shuffleSeed) | (shuffleSeed, _) <- zip (randoms (mkStdGen seed) :: [Int]) [1..noOfGames]]
