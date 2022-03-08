@@ -11,4 +11,4 @@ A solitaire solver that simulates eight-off solitaire games. It uses the iterati
 `git clone https://github.com/Jed-g/solitaire-solver.git`
 3. To run, use the function **analyseEO** to simulate a number of games using the aforementioned search technique i.e..  
 `analyseEO <Seed for pseudo-random initial game state generation> <Number of games to play>`
->Returns number of games won and average number of cards in foundations at the point of game termination.
+    >Returns number of games won and average number of cards in foundations at the point of game termination.
